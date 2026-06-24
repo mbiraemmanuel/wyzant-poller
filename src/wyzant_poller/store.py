@@ -80,5 +80,13 @@ class Store:
                     (job.id, job.title, job.subject, job.url, ts),
                 )
 
+    def record_poll(self) -> None:
+        ts = datetime.now(timezone.utc).timestamp()
+        with self._con:
+            self._con.execute(
+                "INSERT OR REPLACE INTO metadata (key, value) VALUES ('last_poll_at', ?)",
+                (str(ts),),
+            )
+
     def close(self) -> None:
         self._con.close()

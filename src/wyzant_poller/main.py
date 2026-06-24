@@ -104,6 +104,8 @@ def _poll_once(
         session = _make_session(auth)
         jobs = fetch_jobs(config, session)
 
+    store.record_poll()
+
     if not store.is_baseline_established():
         store.establish_baseline(jobs)
         return
