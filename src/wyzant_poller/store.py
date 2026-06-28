@@ -22,6 +22,13 @@ CREATE TABLE IF NOT EXISTS metadata (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS health_events (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    at        REAL NOT NULL,
+    ok        INTEGER NOT NULL,
+    job_count INTEGER,
+    message   TEXT
+);
 """
 
 
@@ -79,6 +86,18 @@ class Store:
                     "VALUES (?, ?, ?, ?, ?)",
                     (job.id, job.title, job.subject, job.url, ts),
                 )
+
+    def record_health_check(self, ok: bool, job_count: int, message: str) -> None:
+        ts = datetime.now(timezone.utc).timestamp()
+        with self._con:
+            self._con.execute(
+                "INSERT INTO health_events (at, ok, job_count, message) VALUES (?, ?, ?, ?)",
+                (ts, 1 if ok else 0, job_count, message),
+            )
+            self._con.execute(
+                "DELETE FROM health_events WHERE id NOT IN "
+                "(SELECT id FROM health_events ORDER BY at DESC LIMIT 200)"
+            )
 
     def record_poll(self) -> None:
         ts = datetime.now(timezone.utc).timestamp()

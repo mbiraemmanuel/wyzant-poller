@@ -7,13 +7,10 @@ import time
 from pathlib import Path
 
 import requests
+from bs4 import BeautifulSoup
 
 from .auth import AuthManager
 from .config import Config, load_config
-import smtplib
-from email.message import EmailMessage
-
-from bs4 import BeautifulSoup
 
 from .fetch import AuthExpiredError, _JOBS_PARAMS, _REQUEST_HEADERS, _check_response, fetch_jobs
 from .notify import EmailNotifier, MultiNotifier, NtfyNotifier, TwilioNotifier
@@ -45,8 +42,8 @@ def _make_session(auth: AuthManager) -> requests.Session:
     return session
 
 
-def _health_check(config: Config, session: requests.Session) -> bool:
-    """Fetch all-subjects view. Returns True if healthy, sends alert email and returns False if not."""
+def _health_check(config: Config, session: requests.Session) -> tuple[bool, int, str]:
+    """Fetch all-subjects view. Returns (ok, job_count, message)."""
     try:
         resp = session.get(
             config.jobs_url,
@@ -57,35 +54,16 @@ def _health_check(config: Config, session: requests.Session) -> bool:
         _check_response(resp)
         count = len(BeautifulSoup(resp.text, "html.parser").select("div.academy-card"))
         if count > 0:
-            logger.info("Health check OK — %d jobs visible on all-subjects board", count)
-            return True
-        logger.error("Health check FAILED — all-subjects view returned 0 job cards")
+            msg = f"OK — {count} jobs visible on all-subjects board"
+            logger.info("Health check %s", msg)
+            return True, count, msg
+        msg = "FAILED — all-subjects view returned 0 job cards"
+        logger.error("Health check %s", msg)
+        return False, 0, msg
     except Exception as exc:
-        logger.error("Health check error: %s", exc)
-
-    try:
-        msg = EmailMessage()
-        msg["Subject"] = "Wyzant Poller — Session May Be Dead"
-        msg["From"] = config.email_from or config.smtp_username
-        msg["To"] = config.alert_email
-        msg.set_content(
-            "The Wyzant job poller health check failed.\n\n"
-            "The 'all subjects' board returned 0 jobs, which should never happen.\n"
-            "This usually means the session has expired or Wyzant blocked the request.\n\n"
-            "Check the log and restart the poller:\n"
-            f"  tail -50 {config.state_dir}/poller.log\n\n"
-            "— Wyzant Job Poller"
-        )
-        with smtplib.SMTP(config.smtp_host, config.smtp_port, timeout=15) as smtp:
-            smtp.ehlo()
-            smtp.starttls()
-            smtp.login(config.smtp_username, config.smtp_password)
-            smtp.send_message(msg)
-        logger.info("Health alert sent → %s", config.alert_email)
-    except Exception:
-        logger.exception("Failed to send health alert")
-
-    return False
+        msg = f"Error: {exc}"
+        logger.error("Health check %s", msg)
+        return False, 0, msg
 
 
 def _poll_once(
@@ -182,13 +160,13 @@ def _cmd_run(args: argparse.Namespace, config: Config) -> None:
                 session = _make_session(auth)
 
                 # Health check: all-subjects view should always have jobs
-                if config.alert_email and config.smtp_username and config.smtp_password:
-                    healthy = _health_check(config, session)
-                    if not healthy and not health_alert_sent:
-                        health_alert_sent = True
-                    elif healthy and health_alert_sent:
-                        health_alert_sent = False
-                        logger.info("Health check recovered")
+                healthy, job_count, hc_msg = _health_check(config, session)
+                store.record_health_check(healthy, job_count, hc_msg)
+                if not healthy and not health_alert_sent:
+                    health_alert_sent = True
+                elif healthy and health_alert_sent:
+                    health_alert_sent = False
+                    logger.info("Health check recovered")
 
                 _poll_once(config, auth, store, notifier, dry_run=args.dry_run)
                 backoff = 0.0

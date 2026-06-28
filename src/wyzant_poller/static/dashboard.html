@@ -333,6 +333,26 @@
         </div>
       </div>
 
+      <!-- HEALTH EVENT HISTORY -->
+      <div style="background:#fff;border:1px solid #ECE3D8;border-radius:16px;padding:20px;margin-bottom:16px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:13px;">
+          <div style="font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:#9A8C80;font-weight:700;">Health check history</div>
+          <span style="font-size:12px;color:#B3A89C;font-weight:600;">last 100 checks · failures highlighted</span>
+        </div>
+        <sc-if value="{{ noHealthEvents }}" hint-placeholder-val="{{ false }}">
+          <div style="color:#B3A89C;font-size:13px;text-align:center;padding:24px 0;">No health checks recorded yet — checks run every poll cycle.</div>
+        </sc-if>
+        <div style="max-height:260px;overflow-y:auto;">
+          <sc-for list="{{ healthEventRows }}" as="e" hint-placeholder-count="5">
+            <div style="{{ e.rowStyle }}">
+              <span style="{{ e.badgeStyle }}">{{ e.badge }}</span>
+              <span style="font-size:11.5px;color:#8A7E76;font-weight:600;flex-shrink:0;min-width:136px;">{{ e.time }}</span>
+              <span style="font-size:13px;color:#3C342E;flex:1;">{{ e.message }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
       <!-- LIVE LOG -->
       <div style="background:#fff;border:1px solid #ECE3D8;border-radius:16px;padding:20px;">
         <div style="display:flex;align-items:center;gap:9px;margin-bottom:13px;">
@@ -422,7 +442,7 @@ class Component extends DCLogic {
     quietOn: false, quietStart: '22:00', quietEnd: '07:00',
     filterStatus: 'all', filterSubject: 'all', filterTutor: 'all', query: '',
     seq: 1000, notifSeq: 1, healthOk: true, flashId: null,
-    baselineCount: 0,
+    baselineCount: 0, healthEvents: [],
   };
 
   TUTORS = {
@@ -447,12 +467,13 @@ class Component extends DCLogic {
 
   componentDidMount() {
     this._t = setInterval(() => this.tick(), 1000);
-    this._refresh = setInterval(() => { this.syncJobs(); this.syncStatus(); }, 30000);
+    this._refresh = setInterval(() => { this.syncJobs(); this.syncStatus(); this.syncHealthEvents(); }, 30000);
     this._unlock = () => { this.ensureAudio(); };
     document.addEventListener('pointerdown', this._unlock, { once: true });
     this.syncJobs();
     this.syncStatus();
     this.syncSubjects();
+    this.syncHealthEvents();
     this.setupLogStream();
   }
 
@@ -520,6 +541,11 @@ class Component extends DCLogic {
       poller: data.status === 'active' ? 'active' : 'stopped',
       lastPollAt: data.last_poll_at ? data.last_poll_at * 1000 : this.state.lastPollAt,
     });
+  }
+
+  async syncHealthEvents() {
+    const data = await this.api('/api/health-events');
+    if (data) this.setState({ healthEvents: data.events || [] });
   }
 
   async syncSubjects() {
@@ -875,6 +901,18 @@ class Component extends DCLogic {
       quietBodyStyle: s.quietOn ? '' : 'opacity:.45;pointer-events:none;',
       quietStart: s.quietStart, quietEnd: s.quietEnd,
       onQuietStart: (e) => this.setState({ quietStart: e.target.value }), onQuietEnd: (e) => this.setState({ quietEnd: e.target.value }),
+
+      healthEventRows: (s.healthEvents || []).map(e => {
+        const d = new Date(e.at * 1000);
+        return {
+          badge: e.ok ? 'OK' : 'FAIL',
+          badgeStyle: { display: 'inline-flex', alignItems: 'center', padding: '2px 9px', borderRadius: '6px', fontSize: '11px', fontWeight: 800, background: e.ok ? '#E6F3EC' : '#FDEEE7', color: e.ok ? '#2F8F5F' : '#CE3B2B', flexShrink: 0 },
+          time: d.toLocaleDateString() + ' ' + d.toLocaleTimeString(),
+          message: e.message,
+          rowStyle: { display: 'flex', alignItems: 'center', gap: '12px', padding: '8px 4px', borderBottom: '1px solid ' + (e.ok ? '#F4EDE3' : '#FDEEE7'), background: e.ok ? 'transparent' : '#FFFBF9' },
+        };
+      }),
+      noHealthEvents: (s.healthEvents || []).length === 0,
 
       logLines, logRef: (el) => { this._log = el; },
 

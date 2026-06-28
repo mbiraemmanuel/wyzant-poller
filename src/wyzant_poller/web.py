@@ -47,6 +47,15 @@ def _migrate():
             except sqlite3.OperationalError:
                 pass
         conn.execute("CREATE TABLE IF NOT EXISTS subjects (name TEXT PRIMARY KEY)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS health_events (
+                id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                at        REAL NOT NULL,
+                ok        INTEGER NOT NULL,
+                job_count INTEGER,
+                message   TEXT
+            )
+        """)
 
 
 @app.get("/")
@@ -173,6 +182,23 @@ def api_logs_stream():
         mimetype="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@app.get("/api/health-events")
+@_requires_auth
+def api_health_events():
+    _migrate()
+    if not _DB_PATH.exists():
+        return jsonify(events=[])
+    with sqlite3.connect(_DB_PATH) as conn:
+        rows = conn.execute(
+            "SELECT at, ok, job_count, message FROM health_events ORDER BY at DESC LIMIT 100"
+        ).fetchall()
+    events = [
+        {"at": r[0], "ok": bool(r[1]), "job_count": r[2], "message": r[3]}
+        for r in rows
+    ]
+    return jsonify(events=events)
 
 
 @app.get("/api/subjects")
