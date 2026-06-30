@@ -183,6 +183,13 @@ def _cmd_run(args: argparse.Namespace, config: Config) -> None:
                 except Exception:
                     logger.exception("Retry also failed")
                     backoff = min((backoff or 30.0) * 2, MAX_BACKOFF)
+            except requests.exceptions.HTTPError as exc:
+                if exc.response is not None and exc.response.status_code == 429:
+                    logger.warning("Rate-limited by Wyzant (429) — backing off aggressively")
+                    backoff = min((backoff or 120.0) * 2, MAX_BACKOFF)
+                else:
+                    logger.exception("HTTP error during poll")
+                    backoff = min((backoff or 30.0) * 2, MAX_BACKOFF)
             except Exception:
                 logger.exception("Unexpected error during poll")
                 backoff = min((backoff or 30.0) * 2, MAX_BACKOFF)

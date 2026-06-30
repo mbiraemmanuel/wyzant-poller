@@ -1,5 +1,6 @@
 import logging
 import smtplib
+import time
 from abc import ABC, abstractmethod
 from email.message import EmailMessage
 
@@ -21,19 +22,27 @@ class NtfyNotifier(Notifier):
 
     def send(self, job: Job) -> None:
         subject_tag = job.subject.lower().replace(" ", "_") if job.subject else "tutoring"
-        resp = requests.post(
-            self._url,
-            data=job.title.encode("utf-8"),
-            headers={
-                "Title": "New Wyzant Job",
-                "Click": job.url,
-                "Priority": "high",
-                "Tags": f"school,{subject_tag}",
-            },
-            timeout=10,
-        )
+        for attempt in range(3):
+            resp = requests.post(
+                self._url,
+                data=job.title.encode("utf-8"),
+                headers={
+                    "Title": "New Wyzant Job",
+                    "Click": job.url,
+                    "Priority": "high",
+                    "Tags": f"school,{subject_tag}",
+                },
+                timeout=10,
+            )
+            if resp.status_code == 429:
+                wait = 10 * (2 ** attempt)
+                logger.warning("ntfy rate-limited — retrying in %ds (attempt %d/3)", wait, attempt + 1)
+                time.sleep(wait)
+                continue
+            resp.raise_for_status()
+            logger.info("ntfy sent: [%s] %s", job.id, job.title)
+            return
         resp.raise_for_status()
-        logger.info("ntfy sent: [%s] %s", job.id, job.title)
 
 
 class EmailNotifier(Notifier):
