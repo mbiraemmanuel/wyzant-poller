@@ -148,5 +148,9 @@ def _id_from_apply_link(link_el: Optional[BeautifulSoup]) -> Optional[str]:
 
 def _card_hash(card: BeautifulSoup) -> str:
     """Stable pseudo-ID when no apply link is present."""
-    text = card.get_text(separator=" ", strip=True)[:300]
-    return "h:" + hashlib.sha1(text.encode()).hexdigest()[:16]
+    subject_el = card.select_one(_JOB_SUBJECT_SEL)
+    student_el = card.select_one(_JOB_STUDENT_SEL)
+    subject = subject_el.get_text(strip=True) if subject_el else ""
+    student = student_el.get_text(strip=True) if student_el else ""
+    stable = f"{subject}|{student}"
+    return "h:" + hashlib.sha1(stable.encode()).hexdigest()[:16]
