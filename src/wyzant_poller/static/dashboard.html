@@ -59,6 +59,7 @@
         <button onClick="{{ onTabLive }}" style="{{ tabLiveStyle }}">Live</button>
         <button onClick="{{ onTabJobs }}" style="{{ tabJobsStyle }}">Jobs</button>
         <button onClick="{{ onTabHealth }}" style="{{ tabHealthStyle }}">Health</button>
+        <button onClick="{{ onTabInsights }}" style="{{ tabInsightsStyle }}">Insights</button>
       </nav>
 
       <div style="margin-left:auto;display:flex;align-items:center;gap:10px;">
@@ -367,6 +368,62 @@
         </div>
       </div>
     </sc-if>
+
+    <!-- ============ INSIGHTS TAB ============ -->
+    <sc-if value="{{ isInsights }}" hint-placeholder-val="{{ false }}">
+
+      <!-- SUMMARY STATS -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px;">
+        <div style="background:#fff;border:1px solid #ECE3D8;border-radius:16px;padding:20px 22px;">
+          <div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:34px;color:#C85A38;line-height:1;">{{ insightTotal }}</div>
+          <div style="font-size:12px;color:#8A7E76;margin-top:5px;font-weight:600;">Total jobs tracked</div>
+        </div>
+        <div style="background:#fff;border:1px solid #ECE3D8;border-radius:16px;padding:20px 22px;">
+          <div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:34px;color:#3463B0;line-height:1;">{{ insightDays }}</div>
+          <div style="font-size:12px;color:#8A7E76;margin-top:5px;font-weight:600;">Days monitored</div>
+        </div>
+        <div style="background:#fff;border:1px solid #ECE3D8;border-radius:16px;padding:20px 22px;">
+          <div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:34px;color:#2F8F5F;line-height:1;">{{ insightPeakHour }}</div>
+          <div style="font-size:12px;color:#8A7E76;margin-top:5px;font-weight:600;">Peak posting hour (ET)</div>
+        </div>
+        <div style="background:#fff;border:1px solid #ECE3D8;border-radius:16px;padding:20px 22px;">
+          <div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:22px;color:#7A4FB0;line-height:1;margin-top:6px;">{{ insightTopSubject }}</div>
+          <div style="font-size:12px;color:#8A7E76;margin-top:7px;font-weight:600;">Most common subject</div>
+        </div>
+      </div>
+
+      <!-- HOURLY BAR CHART -->
+      <div style="background:#fff;border:1px solid #ECE3D8;border-radius:16px;padding:24px 26px;margin-bottom:16px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+          <div style="font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#9A8C80;font-weight:700;">Jobs by hour of day (Eastern)</div>
+          <span style="font-size:12px;color:#B3A89C;font-weight:600;">{{ insightDateRange }}</span>
+        </div>
+        <div style="display:flex;align-items:flex-end;gap:8px;height:160px;padding-bottom:28px;position:relative;">
+          <sc-for list="{{ hourlyBars }}" as="b" hint-placeholder-count="12">
+            <div style="{{ b.colStyle }}">
+              <div style="font-size:10px;font-weight:700;color:#9A8C80;margin-bottom:4px;text-align:center;">{{ b.countLabel }}</div>
+              <div style="{{ b.barStyle }}"></div>
+              <div style="font-size:11px;font-weight:600;color:{{ b.labelColor }};margin-top:6px;text-align:center;">{{ b.label }}</div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <!-- SUBJECT BREAKDOWN -->
+      <div style="background:#fff;border:1px solid #ECE3D8;border-radius:16px;padding:24px 26px;">
+        <div style="font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#9A8C80;font-weight:700;margin-bottom:18px;">Top subjects</div>
+        <sc-for list="{{ subjectBars }}" as="sb" hint-placeholder-count="7">
+          <div style="display:grid;grid-template-columns:140px 1fr 52px;align-items:center;gap:14px;margin-bottom:13px;">
+            <div style="font-size:13.5px;font-weight:700;color:#3C342E;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ sb.subject }}</div>
+            <div style="height:10px;background:#F1E9DD;border-radius:99px;overflow:hidden;">
+              <div style="{{ sb.fillStyle }}"></div>
+            </div>
+            <div style="font-size:13px;font-weight:700;color:#8A7E76;text-align:right;">{{ sb.count }}</div>
+          </div>
+        </sc-for>
+      </div>
+
+    </sc-if>
   </main>
 
   <!-- TOASTS -->
@@ -443,6 +500,7 @@ class Component extends DCLogic {
     filterStatus: 'all', filterSubject: 'all', filterTutor: 'all', query: '',
     seq: 1000, notifSeq: 1, healthOk: true, flashId: null,
     baselineCount: 0, healthEvents: [],
+    analytics: null,
   };
 
   TUTORS = {
@@ -467,13 +525,14 @@ class Component extends DCLogic {
 
   componentDidMount() {
     this._t = setInterval(() => this.tick(), 1000);
-    this._refresh = setInterval(() => { this.syncJobs(); this.syncStatus(); this.syncHealthEvents(); }, 30000);
+    this._refresh = setInterval(() => { this.syncJobs(); this.syncStatus(); this.syncHealthEvents(); this.syncAnalytics(); }, 30000);
     this._unlock = () => { this.ensureAudio(); };
     document.addEventListener('pointerdown', this._unlock, { once: true });
     this.syncJobs();
     this.syncStatus();
     this.syncSubjects();
     this.syncHealthEvents();
+    this.syncAnalytics();
     this.setupLogStream();
   }
 
@@ -546,6 +605,11 @@ class Component extends DCLogic {
   async syncHealthEvents() {
     const data = await this.api('/api/health-events');
     if (data) this.setState({ healthEvents: data.events || [] });
+  }
+
+  async syncAnalytics() {
+    const data = await this.api('/api/analytics');
+    if (data) this.setState({ analytics: data });
   }
 
   async syncSubjects() {
@@ -841,9 +905,9 @@ class Component extends DCLogic {
     return {
       // shell
       sessionError: s.sessionError, onClearError: () => this.clearError(),
-      tabLiveStyle: tabBtn('live'), tabJobsStyle: tabBtn('jobs'), tabHealthStyle: tabBtn('health'),
-      onTabLive: () => this.setState({ tab: 'live' }), onTabJobs: () => this.setState({ tab: 'jobs' }), onTabHealth: () => this.setState({ tab: 'health' }),
-      isLive: s.tab === 'live', isJobs: s.tab === 'jobs', isHealth: s.tab === 'health',
+      tabLiveStyle: tabBtn('live'), tabJobsStyle: tabBtn('jobs'), tabHealthStyle: tabBtn('health'), tabInsightsStyle: tabBtn('insights'),
+      onTabLive: () => this.setState({ tab: 'live' }), onTabJobs: () => this.setState({ tab: 'jobs' }), onTabHealth: () => this.setState({ tab: 'health' }), onTabInsights: () => { this.setState({ tab: 'insights' }); this.syncAnalytics(); },
+      isLive: s.tab === 'live', isJobs: s.tab === 'jobs', isHealth: s.tab === 'health', isInsights: s.tab === 'insights',
       pillStyle: { display: 'flex', alignItems: 'center', gap: '9px', background: '#fff', border: '1px solid #E6DCCF', borderRadius: '11px', padding: '7px 13px 7px 11px' },
       pillDotStyle: { width: '9px', height: '9px', borderRadius: '50%', background: poleMeta.dot, animation: poleMeta.blink ? 'liveBlink 1.3s infinite' : 'none', flexShrink: 0 },
       pillText: poleMeta.text, pillSub: poleMeta.sub,
@@ -915,6 +979,41 @@ class Component extends DCLogic {
       noHealthEvents: (s.healthEvents || []).length === 0,
 
       logLines, logRef: (el) => { this._log = el; },
+
+      // insights
+      ...(() => {
+        const a = s.analytics || { hourly: [], subjects: [], total: 0, from_ts: null, to_ts: null };
+        const maxH = Math.max(...a.hourly.map(h => h.count), 1);
+        const peak = a.hourly.reduce((best, h) => h.count > (best.count || 0) ? h : best, {});
+        const peakLabel = peak.hour != null ? ((peak.hour % 12 || 12) + (peak.hour < 12 ? 'am' : 'pm')) : '—';
+        const days = (a.from_ts && a.to_ts) ? Math.max(1, Math.ceil((a.to_ts - a.from_ts) / 86400)) : 0;
+        const fmtDate = ts => ts ? new Date(ts * 1000).toLocaleDateString() : '—';
+        const maxS = Math.max(...a.subjects.map(sb => sb.count), 1);
+        const hourlyBars = a.hourly.map(h => {
+          const pct = Math.round(h.count / maxH * 100);
+          const isPeak = h.count === maxH;
+          const h12 = h.hour % 12 || 12;
+          const sfx = h.hour < 12 ? 'am' : 'pm';
+          return {
+            label: h12 + sfx, countLabel: h.count > 0 ? h.count : '',
+            labelColor: isPeak ? '#C85A38' : '#9A8C80',
+            colStyle: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%' },
+            barStyle: { width: '100%', height: pct + '%', minHeight: h.count > 0 ? '4px' : '0', background: isPeak ? '#E2724E' : '#EAD9C4', borderRadius: '5px 5px 0 0', transition: 'height .4s' },
+          };
+        });
+        const subjectBars = a.subjects.map(sb => ({
+          subject: sb.subject, count: sb.count,
+          fillStyle: { height: '100%', width: (sb.count / maxS * 100) + '%', background: '#E2724E', borderRadius: '99px', transition: 'width .4s' },
+        }));
+        return {
+          insightTotal: a.total || 0,
+          insightDays: days,
+          insightPeakHour: peakLabel,
+          insightTopSubject: a.subjects[0] ? a.subjects[0].subject : '—',
+          insightDateRange: a.from_ts ? fmtDate(a.from_ts) + ' – ' + fmtDate(a.to_ts) : 'loading…',
+          hourlyBars, subjectBars,
+        };
+      })(),
 
       // note modal
       noteOpen: !!s.noteJobId, noteJobTitle: noteJob ? noteJob.title : '', noteDraft: s.noteDraft,

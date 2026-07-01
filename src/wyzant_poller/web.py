@@ -201,6 +201,30 @@ def api_health_events():
     return jsonify(events=events)
 
 
+@app.get("/api/analytics")
+@_requires_auth
+def api_analytics():
+    _migrate()
+    if not _DB_PATH.exists():
+        return jsonify(hourly=[], subjects=[], total=0, from_ts=None, to_ts=None)
+    with sqlite3.connect(_DB_PATH) as conn:
+        hourly = conn.execute(
+            "SELECT CAST((first_seen - 4*3600) % 86400 / 3600 AS INT) as hr, COUNT(*) cnt "
+            "FROM job_history GROUP BY hr ORDER BY hr"
+        ).fetchall()
+        subjects = conn.execute(
+            "SELECT COALESCE(subject,'General'), COUNT(*) cnt FROM job_history "
+            "GROUP BY subject ORDER BY cnt DESC LIMIT 10"
+        ).fetchall()
+        total = conn.execute("SELECT COUNT(*) FROM job_history").fetchone()[0]
+        dr = conn.execute("SELECT MIN(first_seen), MAX(first_seen) FROM job_history").fetchone()
+    return jsonify(
+        hourly=[{"hour": r[0], "count": r[1]} for r in hourly],
+        subjects=[{"subject": r[0], "count": r[1]} for r in subjects],
+        total=total, from_ts=dr[0], to_ts=dr[1],
+    )
+
+
 @app.get("/api/subjects")
 @_requires_auth
 def api_subjects():
